@@ -14,7 +14,7 @@ from __future__ import division
 import pandas as pd
 import numpy as np
 from scipy.constants import codata
-
+#from IPython.core.debugger import Tracer    
 #### Extracting .mpt files with PEIS or GEIS data
 def correct_text_EIS(text_header):
     '''Corrects the text of '*.mpt' and '*.dta' files into readable parameters without spaces, ., or /
@@ -93,6 +93,7 @@ def extract_mpt(path, EIS_name):
     
     Kristian B. Knudsen (kknu@berkeley.edu || kristianbknudsen@gmail.com)
     '''
+#    Tracer()()
     EIS_init = pd.read_csv(path+EIS_name, sep='\t', nrows=1,header=0,names=['err'], encoding='latin1') #findes line that states skiplines
 #    EIS_test_header_names = pd.read_csv(path+EIS_name, sep='\t', skiprows=int(EIS_init.err[0][18:20])-1, encoding='latin1') #locates number of skiplines
     EIS_test_header_names = pd.read_csv(path+EIS_name, sep='\t', skiprows=int(EIS_init.err[0][18:-1])-1, encoding='latin1') #locates number of skiplines
@@ -140,6 +141,24 @@ def extract_solar(path, EIS_name):
     data = pd.read_csv(path+EIS_name, sep='\t', skiprows=header_loc+2, names=header_names, encoding='latin1')
     data.update({'im': -data.im})
     data = data.assign(cycle_number = 1.0)
+    return data
+
+
+def extract_csv(path, EIS_name): 
+    '''
+    Extracting simple csv file with a single row of headers
+    
+    Mohit R. Mehta (mohitmeht@pm.me)
+    '''
+#    Tracer()()
+    print('Assuming data has a single liner of headers!')
+    EIS_test_header_names = pd.read_csv(path+EIS_name)#, sep='\t', encoding='latin1') #locates number of skiplines
+    names_EIS = []
+    for j in range(len(EIS_test_header_names.columns)):
+        names_EIS.append(correct_text_EIS(EIS_test_header_names.columns[j])) #reads coloumn text
+#    return pd.read_csv(path+EIS_name, sep='\t', skiprows=int(EIS_init.err[0][18:20]), names=names_EIS, encoding='latin1')
+    data = pd.read_csv(path+EIS_name, sep=',', header=0, names=names_EIS, encoding='latin1')
+    data['im'] = abs(data['im'])   
     return data
 
 #

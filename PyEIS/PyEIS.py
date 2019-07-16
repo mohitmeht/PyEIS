@@ -2237,8 +2237,10 @@ class EIS_exp:
                 self.df_raw0.append(extract_dta(path=path, EIS_name=data[j])) #reads all datafiles
             elif data[j].find(".z") != -1: #file is a .z file
                 self.df_raw0.append(extract_solar(path=path, EIS_name=data[j])) #reads all datafiles
+            elif data[j].find(".csv") != -1: #file is a .z file
+                self.df_raw0.append(extract_csv(path=path, EIS_name=data[j])) #reads all datafiles
             else:
-                print('Data file(s) could not be identified')
+                raise Exception('Data file(s) could not be identified')
 
             self.cycleno.append(self.df_raw0[j].cycle_number)
             if np.min(self.cycleno[j]) <= np.max(self.cycleno[j-1]):
@@ -2327,7 +2329,7 @@ class EIS_exp:
             print('__init__ error (#2)')
 
 
-    def Lin_KK(self, num_RC='auto', legend='on', plot='residuals', bode='off', nyq_xlim='none', nyq_ylim='none', weight_func='Boukamp', savefig='none'):
+    def Lin_KK(self, num_RC='auto', legend='on', plot='no', bode='off', nyq_xlim='none', nyq_ylim='none', weight_func='Boukamp', savefig='none'):
         '''
         Plots the Linear Kramers-Kronig (KK) Validity Test
         The script is based on Boukamp and Schōnleber et al.'s papers for fitting the resistances of multiple -(RC)- circuits
@@ -2351,6 +2353,7 @@ class EIS_exp:
             - can be hardwired by inserting any number (RC-elements/decade)
 
         - plot: 
+            - 'no' dont plot
             - 'residuals' = plots the relative residuals in subplots correspoding to the cycle numbers picked
             - 'w_data' = plots the relative residuals with the experimental data, in Nyquist and bode plot if desired, see 'bode =' in description
         
@@ -2444,7 +2447,7 @@ class EIS_exp:
             for i in range(len(self.df)):
                 self.decade.append(np.log10(np.max(self.df[i].f))-np.log10(np.min(self.df[i].f))) #determine the number of RC circuits based on the number of decades measured and num_RC
                 self.number_RC0.append(np.round(num_RC * self.decade[i]))
-                self.number_RC.append(np.round(num_RC * self.decade[i])) #Creats the the number of -(RC)- circuits
+                self.number_RC.append(np.round(num_RC * self.decade[i])) #Creates the the number of -(RC)- circuits
                 self.Rparam.append(KK_Rnam_val(re=self.df[i].re, re_start=self.df[i].re.idxmin(), num_RC=int(self.number_RC0[i]))[0]) #Creates intial guesses for R's
                 self.t_const.append(KK_timeconst(w=self.df[i].w, num_RC=int(self.number_RC0[i]))) #Creates time constants values for self.number_RC -(RC)- circuits
                 self.Lin_KK_Fit.append(minimize(KK_errorfunc, self.Rparam[i], method='leastsq', args=(self.df[i].w.values, self.df[i].re.values, self.df[i].im.values, self.number_RC0[i], weight_func, self.t_const[i]) )) #maxfev=99
@@ -2646,1332 +2649,1344 @@ class EIS_exp:
         self.label_re_1 = []
         self.label_im_1 = []
         self.label_cycleno = []
-        if legend == 'on':
-            for i in range(len(self.df)):
-                self.label_re_1.append("Z' (#"+str(i+1)+")")
-                self.label_im_1.append("Z'' (#"+str(i+1)+")")
-                self.label_cycleno.append('#'+str(i+1))
-        elif legend == 'potential':
-            for i in range(len(self.df)):
-                self.label_re_1.append("Z' ("+str(np.round(np.average(self.df[i].E_avg), 2))+' V)')
-                self.label_im_1.append("Z'' ("+str(np.round(np.average(self.df[i].E_avg), 2))+' V)')
-                self.label_cycleno.append(str(np.round(np.average(self.df[i].E_avg), 2))+' V')
-
-
-        if plot == 'w_data':
-            fig = figure(figsize=(6, 8), dpi=120, facecolor='w', edgecolor='k')
-            fig.subplots_adjust(left=0.1, right=0.95, hspace=0.5, bottom=0.1, top=0.95)
-            ax = fig.add_subplot(311, aspect='equal')
-            ax1 = fig.add_subplot(312)
-            ax2 = fig.add_subplot(313)
+        if plot == 'off': #  Allows one to extract data as df and skip plotting -Mohit 
+            data= pd.DataFrame()
+            data['f'] = self.df_raw['f'].values
+            tmpdata = self.KK_rr_re
+            tmpdf = pd.DataFrame(tmpdata[0])
+            data['KK_rr_re'] = tmpdf['re'].values
+            tmpdata = self.KK_rr_im
+            tmpdf = pd.DataFrame(tmpdata[0])
+            data['KK_rr_im'] = tmpdf['im'].values
+            return data
+        else:
+            if legend == 'on':
+                for i in range(len(self.df)):
+                    self.label_re_1.append("Z' (#"+str(i+1)+")")
+                    self.label_im_1.append("Z'' (#"+str(i+1)+")")
+                    self.label_cycleno.append('#'+str(i+1))
+            elif legend == 'potential':
+                for i in range(len(self.df)):
+                    self.label_re_1.append("Z' ("+str(np.round(np.average(self.df[i].E_avg), 2))+' V)')
+                    self.label_im_1.append("Z'' ("+str(np.round(np.average(self.df[i].E_avg), 2))+' V)')
+                    self.label_cycleno.append(str(np.round(np.average(self.df[i].E_avg), 2))+' V')
     
-            colors = sns.color_palette("colorblind", n_colors=len(self.df))
-            colors_real = sns.color_palette("Blues", n_colors=len(self.df)+2)
-            colors_imag = sns.color_palette("Oranges", n_colors=len(self.df)+2)
     
-            ### Nyquist Plot
-            for i in range(len(self.df)):
-                ax.plot(self.df[i].re, self.df[i].im, marker='o', ms=4, lw=2, color=colors[i], ls='-', alpha=.7, label=self.label_cycleno[i])
+            if plot == 'w_data':
+                fig = figure(figsize=(6, 8), dpi=120, facecolor='w', edgecolor='k')
+                fig.subplots_adjust(left=0.1, right=0.95, hspace=0.5, bottom=0.1, top=0.95)
+                ax = fig.add_subplot(311, aspect='equal')
+                ax1 = fig.add_subplot(312)
+                ax2 = fig.add_subplot(313)
+        
+                colors = sns.color_palette("colorblind", n_colors=len(self.df))
+                colors_real = sns.color_palette("Blues", n_colors=len(self.df)+2)
+                colors_imag = sns.color_palette("Oranges", n_colors=len(self.df)+2)
+        
+                ### Nyquist Plot
+                for i in range(len(self.df)):
+                    ax.plot(self.df[i].re, self.df[i].im, marker='o', ms=4, lw=2, color=colors[i], ls='-', alpha=.7, label=self.label_cycleno[i])
+        
+                ### Bode Plot
+                if bode == 'on':
+                    for i in range(len(self.df)):
+                        ax1.plot(np.log10(self.df[i].f), self.df[i].re, color=colors_real[i+1], marker='D', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_re_1[i])
+                        ax1.plot(np.log10(self.df[i].f), self.df[i].im, color=colors_imag[i+1], marker='s', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_im_1[i])
+                        ax1.set_xlabel("log(f) [Hz]")
+                        ax1.set_ylabel("Z', -Z'' [$\Omega$]")
+                        if legend == 'on' or legend == 'potential':
+                            ax1.legend(loc='best', fontsize=10, frameon=False)
     
-            ### Bode Plot
-            if bode == 'on':
-                for i in range(len(self.df)):
-                    ax1.plot(np.log10(self.df[i].f), self.df[i].re, color=colors_real[i+1], marker='D', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_re_1[i])
-                    ax1.plot(np.log10(self.df[i].f), self.df[i].im, color=colors_imag[i+1], marker='s', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_im_1[i])
-                    ax1.set_xlabel("log(f) [Hz]")
-                    ax1.set_ylabel("Z', -Z'' [$\Omega$]")
-                    if legend == 'on' or legend == 'potential':
-                        ax1.legend(loc='best', fontsize=10, frameon=False)
-
-            elif bode == 're':
-                for i in range(len(self.df)):
-                    ax1.plot(np.log10(self.df[i].f), self.df[i].re, color=colors_real[i+1], marker='D', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_cycleno[i])
-                    ax1.set_xlabel("log(f) [Hz]")
-                    ax1.set_ylabel("Z' [$\Omega$]")
-                    if legend == 'on' or legend == 'potential':
-                        ax1.legend(loc='best', fontsize=10, frameon=False)
-
-            elif bode == 'log_re':
-                for i in range(len(self.df)):
-                    ax1.plot(np.log10(self.df[i].f), np.log10(self.df[i].re), color=colors_real[i+1], marker='D', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_cycleno[i])
-                    ax1.set_xlabel("log(f) [Hz]")
-                    ax1.set_ylabel("log(Z') [$\Omega$]")
-                    if legend == 'on' or legend == 'potential':
-                        ax1.legend(loc='best', fontsize=10, frameon=False)
-
-            elif bode == 'im':
-                for i in range(len(self.df)):
-                    ax1.plot(np.log10(self.df[i].f), self.df[i].im, color=colors_imag[i+1], marker='s', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_cycleno[i])
-                    ax1.set_xlabel("log(f) [Hz]")
-                    ax1.set_ylabel("-Z'' [$\Omega$]")
-                    if legend == 'on' or legend == 'potential':
-                        ax1.legend(loc='best', fontsize=10, frameon=False)
-
-            elif bode == 'log_im':
-                for i in range(len(self.df)):
-                    ax1.plot(np.log10(self.df[i].f), np.log10(self.df[i].im), color=colors_imag[i+1], marker='s', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_cycleno[i])
-                    ax1.set_xlabel("log(f) [Hz]")
-                    ax1.set_ylabel("log(-Z'') [$\Omega$]")
-                    if legend == 'on' or legend == 'potential':
-                        ax1.legend(loc='best', fontsize=10, frameon=False)      
-
-            elif bode == 'log':
-                for i in range(len(self.df)):
-                    ax1.plot(np.log10(self.df[i].f), np.log10(self.df[i].re), color=colors_real[i+1], marker='D', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_re_1[i])
-                    ax1.plot(np.log10(self.df[i].f), np.log10(self.df[i].im), color=colors_imag[i+1], marker='s', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_im_1[i])
-                    ax1.set_xlabel("log(f) [Hz]")
-                    ax1.set_ylabel("log(Z', -Z'') [$\Omega$]")
-                    if legend == 'on' or legend == 'potential':
-                        ax1.legend(loc='best', fontsize=10, frameon=False)
-
-            ### Kramers-Kronig Relative Residuals    
-            for i in range(len(self.df)):
-                ax2.plot(np.log10(self.df[i].f), self.KK_rr_re[i]*100, color=colors_real[i+1], marker='D', ls='--', ms=6, alpha=.7, label=self.label_re_1[i])
-                ax2.plot(np.log10(self.df[i].f), self.KK_rr_im[i]*100, color=colors_imag[i+1], marker='s', ls='--', ms=6, alpha=.7, label=self.label_im_1[i])
-                ax2.set_xlabel("log(f) [Hz]")
-                ax2.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]")
-                if legend == 'on' or legend == 'potential': 
-                    ax2.legend(loc='best', fontsize=10, frameon=False)        
-            ax2.axhline(0, ls='--', c='k', alpha=.5)
-            
-            ### Setting ylims and write 'KK-Test' on RR subplot
-            self.KK_rr_im_min = []
-            self.KK_rr_im_max = []
-            self.KK_rr_re_min = []
-            self.KK_rr_re_max = []
-            for i in range(len(self.df)):
-                self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
-                self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
-                self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
-                self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))    
-            if np.min(self.KK_rr_im_min) > np.min(self.KK_rr_re_min):
-                ax2.set_ylim(np.min(self.KK_rr_re_min)*100*1.5, np.max(np.abs(self.KK_rr_re_min))*100*1.5)
-                ax2.annotate('Lin-KK', xy=[np.min(np.log10(self.df[0].f)), np.max(self.KK_rr_re_max)*100*.9], color='k', fontweight='bold')
-            elif np.min(self.KK_rr_im_min) < np.min(self.KK_rr_re_min):
-                ax2.set_ylim(np.min(self.KK_rr_im_min)*100*1.5, np.max(self.KK_rr_im_max)*100*1.5)
-                ax2.annotate('Lin-KK', xy=[np.min(np.log10(self.df[0].f)), np.max(self.KK_rr_im_max)*100*.9], color='k', fontweight='bold')
-                
-            ### Figure specifics
-            if legend == 'on' or legend == 'potential':
-                ax.legend(loc='best', fontsize=10, frameon=False)
-            ax.set_xlabel("Z' [$\Omega$]")
-            ax.set_ylabel("-Z'' [$\Omega$]")
-            if nyq_xlim != 'none':
-                ax.set_xlim(nyq_xlim[0], nyq_xlim[1])
-            if nyq_ylim != 'none':
-                ax.set_ylim(nyq_ylim[0], nyq_ylim[1])
-            #Save Figure
-            if savefig != 'none':
-                fig.savefig(savefig)
-
-        ### Illustrating residuals only
+                elif bode == 're':
+                    for i in range(len(self.df)):
+                        ax1.plot(np.log10(self.df[i].f), self.df[i].re, color=colors_real[i+1], marker='D', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_cycleno[i])
+                        ax1.set_xlabel("log(f) [Hz]")
+                        ax1.set_ylabel("Z' [$\Omega$]")
+                        if legend == 'on' or legend == 'potential':
+                            ax1.legend(loc='best', fontsize=10, frameon=False)
     
-        elif plot == 'residuals':
-            colors = sns.color_palette("colorblind", n_colors=9)
-            colors_real = sns.color_palette("Blues", n_colors=9)
-            colors_imag = sns.color_palette("Oranges", n_colors=9)
-
-            ### 1 Cycle
-            if len(self.df) == 1:
-                fig = figure(figsize=(12, 3.8), dpi=120, facecolor='w', edgecolor='k')
-                fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
-                ax = fig.add_subplot(231)
-                ax.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax.set_xlabel("log(f) [Hz]")
-                ax.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]")
-                if legend == 'on' or legend == 'potential':
-                    ax.legend(loc='best', fontsize=10, frameon=False)        
-                ax.axhline(0, ls='--', c='k', alpha=.5)
+                elif bode == 'log_re':
+                    for i in range(len(self.df)):
+                        ax1.plot(np.log10(self.df[i].f), np.log10(self.df[i].re), color=colors_real[i+1], marker='D', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_cycleno[i])
+                        ax1.set_xlabel("log(f) [Hz]")
+                        ax1.set_ylabel("log(Z') [$\Omega$]")
+                        if legend == 'on' or legend == 'potential':
+                            ax1.legend(loc='best', fontsize=10, frameon=False)
+    
+                elif bode == 'im':
+                    for i in range(len(self.df)):
+                        ax1.plot(np.log10(self.df[i].f), self.df[i].im, color=colors_imag[i+1], marker='s', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_cycleno[i])
+                        ax1.set_xlabel("log(f) [Hz]")
+                        ax1.set_ylabel("-Z'' [$\Omega$]")
+                        if legend == 'on' or legend == 'potential':
+                            ax1.legend(loc='best', fontsize=10, frameon=False)
+    
+                elif bode == 'log_im':
+                    for i in range(len(self.df)):
+                        ax1.plot(np.log10(self.df[i].f), np.log10(self.df[i].im), color=colors_imag[i+1], marker='s', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_cycleno[i])
+                        ax1.set_xlabel("log(f) [Hz]")
+                        ax1.set_ylabel("log(-Z'') [$\Omega$]")
+                        if legend == 'on' or legend == 'potential':
+                            ax1.legend(loc='best', fontsize=10, frameon=False)      
+    
+                elif bode == 'log':
+                    for i in range(len(self.df)):
+                        ax1.plot(np.log10(self.df[i].f), np.log10(self.df[i].re), color=colors_real[i+1], marker='D', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_re_1[i])
+                        ax1.plot(np.log10(self.df[i].f), np.log10(self.df[i].im), color=colors_imag[i+1], marker='s', ms=3, lw=2.25, ls='-', alpha=.7, label=self.label_im_1[i])
+                        ax1.set_xlabel("log(f) [Hz]")
+                        ax1.set_ylabel("log(Z', -Z'') [$\Omega$]")
+                        if legend == 'on' or legend == 'potential':
+                            ax1.legend(loc='best', fontsize=10, frameon=False)
+    
+                ### Kramers-Kronig Relative Residuals    
+                for i in range(len(self.df)):
+                    ax2.plot(np.log10(self.df[i].f), self.KK_rr_re[i]*100, color=colors_real[i+1], marker='D', ls='--', ms=6, alpha=.7, label=self.label_re_1[i])
+                    ax2.plot(np.log10(self.df[i].f), self.KK_rr_im[i]*100, color=colors_imag[i+1], marker='s', ls='--', ms=6, alpha=.7, label=self.label_im_1[i])
+                    ax2.set_xlabel("log(f) [Hz]")
+                    ax2.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]")
+                    if legend == 'on' or legend == 'potential': 
+                        ax2.legend(loc='best', fontsize=10, frameon=False)        
+                ax2.axhline(0, ls='--', c='k', alpha=.5)
                 
                 ### Setting ylims and write 'KK-Test' on RR subplot
-                self.KK_rr_im_min = np.min(self.KK_rr_im)
-                self.KK_rr_im_max = np.max(self.KK_rr_im)
-                self.KK_rr_re_min = np.min(self.KK_rr_re)
-                self.KK_rr_re_max = np.max(self.KK_rr_re)
-                if self.KK_rr_re_max > self.KK_rr_im_max:
-                    self.KK_ymax = self.KK_rr_re_max
+                self.KK_rr_im_min = []
+                self.KK_rr_im_max = []
+                self.KK_rr_re_min = []
+                self.KK_rr_re_max = []
+                for i in range(len(self.df)):
+                    self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
+                    self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
+                    self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
+                    self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))    
+                if np.min(self.KK_rr_im_min) > np.min(self.KK_rr_re_min):
+                    ax2.set_ylim(np.min(self.KK_rr_re_min)*100*1.5, np.max(np.abs(self.KK_rr_re_min))*100*1.5)
+                    ax2.annotate('Lin-KK', xy=[np.min(np.log10(self.df[0].f)), np.max(self.KK_rr_re_max)*100*.9], color='k', fontweight='bold')
+                elif np.min(self.KK_rr_im_min) < np.min(self.KK_rr_re_min):
+                    ax2.set_ylim(np.min(self.KK_rr_im_min)*100*1.5, np.max(self.KK_rr_im_max)*100*1.5)
+                    ax2.annotate('Lin-KK', xy=[np.min(np.log10(self.df[0].f)), np.max(self.KK_rr_im_max)*100*.9], color='k', fontweight='bold')
+                    
+                ### Figure specifics
+                if legend == 'on' or legend == 'potential':
+                    ax.legend(loc='best', fontsize=10, frameon=False)
+                ax.set_xlabel("Z' [$\Omega$]")
+                ax.set_ylabel("-Z'' [$\Omega$]")
+                if nyq_xlim != 'none':
+                    ax.set_xlim(nyq_xlim[0], nyq_xlim[1])
+                if nyq_ylim != 'none':
+                    ax.set_ylim(nyq_ylim[0], nyq_ylim[1])
+                #Save Figure
+                if savefig != 'none':
+                    fig.savefig(savefig)
+    
+            ### Illustrating residuals only
+        
+            elif plot == 'residuals':
+                colors = sns.color_palette("colorblind", n_colors=9)
+                colors_real = sns.color_palette("Blues", n_colors=9)
+                colors_imag = sns.color_palette("Oranges", n_colors=9)
+    
+                ### 1 Cycle
+                if len(self.df) == 1:
+                    fig = figure(figsize=(12, 3.8), dpi=120, facecolor='w', edgecolor='k')
+                    fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
+                    ax = fig.add_subplot(231)
+                    ax.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax.set_xlabel("log(f) [Hz]")
+                    ax.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]")
+                    if legend == 'on' or legend == 'potential':
+                        ax.legend(loc='best', fontsize=10, frameon=False)        
+                    ax.axhline(0, ls='--', c='k', alpha=.5)
+                    
+                    ### Setting ylims and write 'KK-Test' on RR subplot
+                    self.KK_rr_im_min = np.min(self.KK_rr_im)
+                    self.KK_rr_im_max = np.max(self.KK_rr_im)
+                    self.KK_rr_re_min = np.min(self.KK_rr_re)
+                    self.KK_rr_re_max = np.max(self.KK_rr_re)
+                    if self.KK_rr_re_max > self.KK_rr_im_max:
+                        self.KK_ymax = self.KK_rr_re_max
+                    else:
+                        self.KK_ymax = self.KK_rr_im_max
+                    if self.KK_rr_re_min < self.KK_rr_im_min:
+                        self.KK_ymin = self.KK_rr_re_min
+                    else:
+                        self.KK_ymin = self.KK_rr_im_min
+                    if np.abs(self.KK_ymin) > self.KK_ymax:
+                        ax.set_ylim(self.KK_ymin*100*1.5, np.abs(self.KK_ymin)*100*1.5)
+                        if legend == 'on':
+                            ax.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin)*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin)*100*1.3], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin) < self.KK_ymax:
+                        ax.set_ylim(np.negative(self.KK_ymax)*100*1.5, np.abs(self.KK_ymax)*100*1.5)
+                        if legend == 'on':
+                            ax.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax*100*1.3], color='k', fontweight='bold')
+    
+                    #Save Figure
+                    if savefig != 'none':
+                        fig.savefig(savefig)
+    
+                ### 2 Cycles
+                elif len(self.df) == 2:
+                    fig = figure(figsize=(12, 5), dpi=120, facecolor='w', edgecolor='k')
+                    fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
+                    ax1 = fig.add_subplot(231)
+                    ax2 = fig.add_subplot(232)
+                    
+                    #cycle 1
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax1.set_xlabel("log(f) [Hz]")
+                    ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
+                    if legend == 'on' or legend == 'potential':
+                        ax1.legend(loc='best', fontsize=10, frameon=False)        
+                    ax1.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    #cycle 2
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax2.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax2.legend(loc='best', fontsize=10, frameon=False)        
+                    ax2.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
+                    self.KK_rr_im_min = []
+                    self.KK_rr_im_max = []
+                    self.KK_rr_re_min = []
+                    self.KK_rr_re_max = []
+                    self.KK_ymin = []
+                    self.KK_ymax = []
+                    for i in range(len(self.df)):
+                        self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
+                        self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
+                        self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
+                        self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
+                        if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
+                            self.KK_ymax.append(self.KK_rr_re_max[i])
+                        else:
+                            self.KK_ymax.append(self.KK_rr_im_max[i])
+                        if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
+                            self.KK_ymin.append(self.KK_rr_re_min[i])
+                        else:
+                            self.KK_ymin.append(self.KK_rr_im_min[i])
+    
+                    if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
+                        ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.3], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.3], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
+                        ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
+                        if legend == 'on': 
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
+                        if legend == 'on':
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.3], color='k', fontweight='bold')
+                    #Save Figure
+                    if savefig != 'none':
+                        fig.savefig(savefig)
+    
+                ### 3 Cycles
+                elif len(self.df) == 3:
+                    fig = figure(figsize=(12, 5), dpi=120, facecolor='w', edgecolor='k')
+                    fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
+                    ax1 = fig.add_subplot(231)
+                    ax2 = fig.add_subplot(232)
+                    ax3 = fig.add_subplot(233)
+                    
+                    #cycle 1
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax1.set_xlabel("log(f) [Hz]")
+                    ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
+                    if legend == 'on' or legend == 'potential':
+                        ax1.legend(loc='best', fontsize=10, frameon=False)        
+                    ax1.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 2
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax2.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax2.legend(loc='best', fontsize=10, frameon=False)        
+                    ax2.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 3
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax3.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax3.legend(loc='best', fontsize=10, frameon=False)        
+                    ax3.axhline(0, ls='--', c='k', alpha=.5)
+                    
+                    ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
+                    self.KK_rr_im_min = []
+                    self.KK_rr_im_max = []
+                    self.KK_rr_re_min = []
+                    self.KK_rr_re_max = []
+                    self.KK_ymin = []
+                    self.KK_ymax = []
+                    for i in range(len(self.df)):
+                        self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
+                        self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
+                        self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
+                        self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
+                        if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
+                            self.KK_ymax.append(self.KK_rr_re_max[i])
+                        else:
+                            self.KK_ymax.append(self.KK_rr_im_max[i])
+                        if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
+                            self.KK_ymin.append(self.KK_rr_re_min[i])
+                        else:
+                            self.KK_ymin.append(self.KK_rr_im_min[i])
+                    if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
+                        ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.3], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.3], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
+                        ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
+                        if legend == 'on': 
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
+                        if legend == 'on':
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.3], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
+                        ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.3], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
+                        ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.3], color='k', fontweight='bold')
+                    #Save Figure
+                    if savefig != 'none':
+                        fig.savefig(savefig)
+    
+                ### 4 Cycles
+                elif len(self.df) == 4:
+                    fig = figure(figsize=(12, 3.8), dpi=120, facecolor='w', edgecolor='k')
+                    fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
+                    ax1 = fig.add_subplot(221)
+                    ax2 = fig.add_subplot(222)
+                    ax3 = fig.add_subplot(223)
+                    ax4 = fig.add_subplot(224)
+                    
+                    #cycle 1
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
+                    if legend == 'on' or legend == 'potential':
+                        ax1.legend(loc='best', fontsize=10, frameon=False)        
+                    ax1.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 2
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax2.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax2.legend(loc='best', fontsize=10, frameon=False)        
+                    ax2.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 3
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax3.set_xlabel("log(f) [Hz]")
+                    ax3.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
+                    if legend == 'on' or legend == 'potential':
+                        ax3.legend(loc='best', fontsize=10, frameon=False)        
+                    ax3.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 4
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax4.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax4.legend(loc='best', fontsize=10, frameon=False)        
+                    ax4.axhline(0, ls='--', c='k', alpha=.5)
+                    
+                    ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
+                    self.KK_rr_im_min = []
+                    self.KK_rr_im_max = []
+                    self.KK_rr_re_min = []
+                    self.KK_rr_re_max = []
+                    self.KK_ymin = []
+                    self.KK_ymax = []
+                    for i in range(len(self.df)):
+                        self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
+                        self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
+                        self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
+                        self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
+                        if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
+                            self.KK_ymax.append(self.KK_rr_re_max[i])
+                        else:
+                            self.KK_ymax.append(self.KK_rr_im_max[i])
+                        if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
+                            self.KK_ymin.append(self.KK_rr_re_min[i])
+                        else:
+                            self.KK_ymin.append(self.KK_rr_im_min[i])
+                    if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
+                        ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
+                        ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
+                        if legend == 'on': 
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
+                        if legend == 'on':
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
+                        ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
+                        ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
+                        ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
+                        ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
+    
+                    #Save Figure
+                    if savefig != 'none':
+                        fig.savefig(savefig)
+    
+                ### 5 Cycles
+                elif len(self.df) == 5:
+                    fig = figure(figsize=(12, 3.8), dpi=120, facecolor='w', edgecolor='k')
+                    fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
+                    ax1 = fig.add_subplot(231)
+                    ax2 = fig.add_subplot(232)
+                    ax3 = fig.add_subplot(233)
+                    ax4 = fig.add_subplot(234)
+                    ax5 = fig.add_subplot(235)
+                    
+                    #cycle 1
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
+                    if legend == 'on' or legend == 'potential':
+                        ax1.legend(loc='best', fontsize=10, frameon=False)        
+                    ax1.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 2
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on' or legend == 'potential':
+                        ax2.legend(loc='best', fontsize=10, frameon=False)        
+                    ax2.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 3
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax3.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax3.legend(loc='best', fontsize=10, frameon=False)        
+                    ax3.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 4
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax4.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
+                    ax4.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax4.legend(loc='best', fontsize=10, frameon=False)        
+                    ax4.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 5
+                    ax5.plot(np.log10(self.df[4].f), self.KK_rr_re[4]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax5.plot(np.log10(self.df[4].f), self.KK_rr_im[4]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax5.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax5.legend(loc='best', fontsize=10, frameon=False)        
+                    ax5.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
+                    self.KK_rr_im_min = []
+                    self.KK_rr_im_max = []
+                    self.KK_rr_re_min = []
+                    self.KK_rr_re_max = []
+                    self.KK_ymin = []
+                    self.KK_ymax = []
+                    for i in range(len(self.df)):
+                        self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
+                        self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
+                        self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
+                        self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
+                        if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
+                            self.KK_ymax.append(self.KK_rr_re_max[i])
+                        else:
+                            self.KK_ymax.append(self.KK_rr_im_max[i])
+                        if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
+                            self.KK_ymin.append(self.KK_rr_re_min[i])
+                        else:
+                            self.KK_ymin.append(self.KK_rr_im_min[i])
+                    if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
+                        ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
+                        ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
+                        if legend == 'on': 
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
+                        if legend == 'on':
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
+                        ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
+                        ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
+                        ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
+                        ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[4]) > self.KK_ymax[4]:
+                        ax5.set_ylim(self.KK_ymin[4]*100*1.5, np.abs(self.KK_ymin[4])*100*1.5)
+                        if legend == 'on': 
+                            ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax5.annotate('Lin-KK ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[4]) < self.KK_ymax[4]:
+                        ax5.set_ylim(np.negative(self.KK_ymax[4])*100*1.5, np.abs(self.KK_ymax[4])*100*1.5)
+                        if legend == 'on': 
+                            ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymax[4])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax5.annotate('Lin-KK, ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), self.KK_ymax[4]*100*1.2], color='k', fontweight='bold')
+                    #Save Figure
+                    if savefig != 'none':
+                        fig.savefig(savefig)
+    
+                ### 6 Cycles
+                elif len(self.df) == 6:
+                    fig = figure(figsize=(12, 3.8), dpi=120, facecolor='w', edgecolor='k')
+                    fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
+                    ax1 = fig.add_subplot(231)
+                    ax2 = fig.add_subplot(232)
+                    ax3 = fig.add_subplot(233)
+                    ax4 = fig.add_subplot(234)
+                    ax5 = fig.add_subplot(235)
+                    ax6 = fig.add_subplot(236)
+                    
+                    #cycle 1
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
+                    if legend == 'on' or legend == 'potential':
+                        ax1.legend(loc='best', fontsize=10, frameon=False)        
+                    ax1.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 2
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on' or legend == 'potential':
+                        ax2.legend(loc='best', fontsize=10, frameon=False)        
+                    ax2.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 3
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on' or legend == 'potential':
+                        ax3.legend(loc='best', fontsize=10, frameon=False)        
+                    ax3.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 4
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax4.set_xlabel("log(f) [Hz]")
+                    ax4.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
+                    if legend == 'on' or legend == 'potential':
+                        ax4.legend(loc='best', fontsize=10, frameon=False)        
+                    ax4.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 5
+                    ax5.plot(np.log10(self.df[4].f), self.KK_rr_re[4]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax5.plot(np.log10(self.df[4].f), self.KK_rr_im[4]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax5.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax5.legend(loc='best', fontsize=10, frameon=False)        
+                    ax5.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 6
+                    ax6.plot(np.log10(self.df[5].f), self.KK_rr_re[5]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax6.plot(np.log10(self.df[5].f), self.KK_rr_im[5]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax6.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax6.legend(loc='best', fontsize=10, frameon=False)        
+                    ax6.axhline(0, ls='--', c='k', alpha=.5)
+                    
+                    ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
+                    self.KK_rr_im_min = []
+                    self.KK_rr_im_max = []
+                    self.KK_rr_re_min = []
+                    self.KK_rr_re_max = []
+                    self.KK_ymin = []
+                    self.KK_ymax = []
+                    for i in range(len(self.df)):
+                        self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
+                        self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
+                        self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
+                        self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
+                        if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
+                            self.KK_ymax.append(self.KK_rr_re_max[i])
+                        else:
+                            self.KK_ymax.append(self.KK_rr_im_max[i])
+                        if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
+                            self.KK_ymin.append(self.KK_rr_re_min[i])
+                        else:
+                            self.KK_ymin.append(self.KK_rr_im_min[i])
+                    if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
+                        ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
+                        ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
+                        if legend == 'on': 
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
+                        if legend == 'on':
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
+                        ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
+                        ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
+                        ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
+                        ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[4]) > self.KK_ymax[4]:
+                        ax5.set_ylim(self.KK_ymin[4]*100*1.5, np.abs(self.KK_ymin[4])*100*1.5)
+                        if legend == 'on': 
+                            ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax5.annotate('Lin-KK ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[4]) < self.KK_ymax[4]:
+                        ax5.set_ylim(np.negative(self.KK_ymax[4])*100*1.5, np.abs(self.KK_ymax[4])*100*1.5)
+                        if legend == 'on': 
+                            ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymax[4])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax5.annotate('Lin-KK, ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), self.KK_ymax[4]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[5]) > self.KK_ymax[5]:
+                        ax6.set_ylim(self.KK_ymin[5]*100*1.5, np.abs(self.KK_ymin[5])*100*1.5)
+                        if legend == 'on': 
+                            ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax6.annotate('Lin-KK ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[5]) < self.KK_ymax[5]:
+                        ax6.set_ylim(np.negative(self.KK_ymax[5])*100*1.5, np.abs(self.KK_ymax[5])*100*1.5)
+                        if legend == 'on': 
+                            ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymax[5])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax6.annotate('Lin-KK, ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), self.KK_ymax[5]*100*1.2], color='k', fontweight='bold')
+                    #Save Figure
+                    if savefig != 'none':
+                        fig.savefig(savefig)
+                              
+                ### 7 Cycles
+                elif len(self.df) == 7:
+                    fig = figure(figsize=(12, 5), dpi=120, facecolor='w', edgecolor='k')
+                    fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
+                    ax1 = fig.add_subplot(331)
+                    ax2 = fig.add_subplot(332)
+                    ax3 = fig.add_subplot(333)
+                    ax4 = fig.add_subplot(334)
+                    ax5 = fig.add_subplot(335)
+                    ax6 = fig.add_subplot(336)
+                    ax7 = fig.add_subplot(337)
+                    
+                    #cycle 1
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
+                    if legend == 'on' or legend == 'potential':
+                        ax1.legend(loc='best', fontsize=10, frameon=False)        
+                    ax1.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 2
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on' or legend == 'potential':
+                        ax2.legend(loc='best', fontsize=10, frameon=False)        
+                    ax2.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 3
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax3.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax3.legend(loc='best', fontsize=10, frameon=False)
+                    ax3.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 4
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax4.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
+                    if legend == 'on' or legend == 'potential':
+                        ax4.legend(loc='best', fontsize=10, frameon=False)
+                    ax4.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 5
+                    ax5.plot(np.log10(self.df[4].f), self.KK_rr_re[4]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax5.plot(np.log10(self.df[4].f), self.KK_rr_im[4]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax5.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax5.legend(loc='best', fontsize=10, frameon=False)
+                    ax5.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 6
+                    ax6.plot(np.log10(self.df[5].f), self.KK_rr_re[5]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax6.plot(np.log10(self.df[5].f), self.KK_rr_im[5]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax6.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax6.legend(loc='best', fontsize=10, frameon=False)
+                    ax6.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 7
+                    ax7.plot(np.log10(self.df[6].f), self.KK_rr_re[6]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax7.plot(np.log10(self.df[6].f), self.KK_rr_im[6]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax7.set_xlabel("log(f) [Hz]")
+                    ax7.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
+                    if legend == 'on' or legend == 'potential':
+                        ax7.legend(loc='best', fontsize=10, frameon=False)
+                    ax7.axhline(0, ls='--', c='k', alpha=.5)
+                    
+                    ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
+                    self.KK_rr_im_min = []
+                    self.KK_rr_im_max = []
+                    self.KK_rr_re_min = []
+                    self.KK_rr_re_max = []
+                    self.KK_ymin = []
+                    self.KK_ymax = []
+                    for i in range(len(self.df)):
+                        self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
+                        self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
+                        self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
+                        self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
+                        if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
+                            self.KK_ymax.append(self.KK_rr_re_max[i])
+                        else:
+                            self.KK_ymax.append(self.KK_rr_im_max[i])
+                        if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
+                            self.KK_ymin.append(self.KK_rr_re_min[i])
+                        else:
+                            self.KK_ymin.append(self.KK_rr_im_min[i])
+                    if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
+                        ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
+                        ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
+                        if legend == 'on': 
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
+                        if legend == 'on':
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
+                        ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
+                        ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
+                        ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
+                        ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[4]) > self.KK_ymax[4]:
+                        ax5.set_ylim(self.KK_ymin[4]*100*1.5, np.abs(self.KK_ymin[4])*100*1.5)
+                        if legend == 'on': 
+                            ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax5.annotate('Lin-KK ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[4]) < self.KK_ymax[4]:
+                        ax5.set_ylim(np.negative(self.KK_ymax[4])*100*1.5, np.abs(self.KK_ymax[4])*100*1.5)
+                        if legend == 'on': 
+                            ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymax[4])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax5.annotate('Lin-KK, ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), self.KK_ymax[4]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[5]) > self.KK_ymax[5]:
+                        ax6.set_ylim(self.KK_ymin[5]*100*1.5, np.abs(self.KK_ymin[5])*100*1.5)
+                        if legend == 'on': 
+                            ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax6.annotate('Lin-KK ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[5]) < self.KK_ymax[5]:
+                        ax6.set_ylim(np.negative(self.KK_ymax[5])*100*1.5, np.abs(self.KK_ymax[5])*100*1.5)
+                        if legend == 'on': 
+                            ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymax[5])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax6.annotate('Lin-KK, ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), self.KK_ymax[5]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[6]) > self.KK_ymax[6]:
+                        ax7.set_ylim(self.KK_ymin[6]*100*1.5, np.abs(self.KK_ymin[6])*100*1.5)
+                        if legend == 'on': 
+                            ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax7.annotate('Lin-KK ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[6]) < self.KK_ymax[6]:
+                        ax7.set_ylim(np.negative(self.KK_ymax[6])*100*1.5, np.abs(self.KK_ymax[6])*100*1.5)
+                        if legend == 'on': 
+                            ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymax[6])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax7.annotate('Lin-KK, ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), self.KK_ymax[6]*100*1.2], color='k', fontweight='bold')
+                    #Save Figure
+                    if savefig != 'none':
+                        fig.savefig(savefig)      
+                               
+                ### 8 Cycles
+                elif len(self.df) == 8:
+                    fig = figure(figsize=(12, 5), dpi=120, facecolor='w', edgecolor='k')
+                    fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
+                    ax1 = fig.add_subplot(331)
+                    ax2 = fig.add_subplot(332)
+                    ax3 = fig.add_subplot(333)
+                    ax4 = fig.add_subplot(334)
+                    ax5 = fig.add_subplot(335)
+                    ax6 = fig.add_subplot(336)
+                    ax7 = fig.add_subplot(337)
+                    ax8 = fig.add_subplot(338)
+                    
+                    #cycle 1
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=14)
+                    if legend == 'on' or legend == 'potential':
+                        ax1.legend(loc='best', fontsize=10, frameon=False)        
+                    ax1.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 2
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on' or legend == 'potential':
+                        ax2.legend(loc='best', fontsize=10, frameon=False)        
+                    ax2.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 3
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on' or legend == 'potential':
+                        ax3.legend(loc='best', fontsize=10, frameon=False)        
+                    ax3.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 4
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax4.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=14)
+                    if legend == 'on' or legend == 'potential':
+                        ax4.legend(loc='best', fontsize=10, frameon=False)        
+                    ax4.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 5
+                    ax5.plot(np.log10(self.df[4].f), self.KK_rr_re[4]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax5.plot(np.log10(self.df[4].f), self.KK_rr_im[4]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on' or legend == 'potential':
+                        ax5.legend(loc='best', fontsize=10, frameon=False)        
+                    ax5.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 6
+                    ax6.plot(np.log10(self.df[5].f), self.KK_rr_re[5]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax6.plot(np.log10(self.df[5].f), self.KK_rr_im[5]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax6.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax6.legend(loc='best', fontsize=10, frameon=False)        
+                    ax6.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 7
+                    ax7.plot(np.log10(self.df[6].f), self.KK_rr_re[6]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax7.plot(np.log10(self.df[6].f), self.KK_rr_im[6]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax7.set_xlabel("log(f) [Hz]")
+                    ax7.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=14)                
+                    if legend == 'on' or legend == 'potential':
+                        ax7.legend(loc='best', fontsize=10, frameon=False)        
+                    ax7.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 8
+                    ax8.plot(np.log10(self.df[7].f), self.KK_rr_re[7]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax8.plot(np.log10(self.df[7].f), self.KK_rr_im[7]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax8.set_xlabel("log(f) [Hz]")
+                    if legend == 'on' or legend == 'potential':
+                        ax8.legend(loc='best', fontsize=10, frameon=False)        
+                    ax8.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
+                    self.KK_rr_im_min = []
+                    self.KK_rr_im_max = []
+                    self.KK_rr_re_min = []
+                    self.KK_rr_re_max = []
+                    self.KK_ymin = []
+                    self.KK_ymax = []
+                    for i in range(len(self.df)):
+                        self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
+                        self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
+                        self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
+                        self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
+                        if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
+                            self.KK_ymax.append(self.KK_rr_re_max[i])
+                        else:
+                            self.KK_ymax.append(self.KK_rr_im_max[i])
+                        if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
+                            self.KK_ymin.append(self.KK_rr_re_min[i])
+                        else:
+                            self.KK_ymin.append(self.KK_rr_im_min[i])
+                    if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
+                        ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
+                        ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
+                        if legend == 'on': 
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
+                        if legend == 'on':
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
+                        ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
+                        ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
+                        ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
+                        ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[4]) > self.KK_ymax[4]:
+                        ax5.set_ylim(self.KK_ymin[4]*100*1.5, np.abs(self.KK_ymin[4])*100*1.5)
+                        if legend == 'on': 
+                            ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax5.annotate('Lin-KK ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[4]) < self.KK_ymax[4]:
+                        ax5.set_ylim(np.negative(self.KK_ymax[4])*100*1.5, np.abs(self.KK_ymax[4])*100*1.5)
+                        if legend == 'on': 
+                            ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymax[4])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax5.annotate('Lin-KK, ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), self.KK_ymax[4]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[5]) > self.KK_ymax[5]:
+                        ax6.set_ylim(self.KK_ymin[5]*100*1.5, np.abs(self.KK_ymin[5])*100*1.5)
+                        if legend == 'on': 
+                            ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax6.annotate('Lin-KK ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[5]) < self.KK_ymax[5]:
+                        ax6.set_ylim(np.negative(self.KK_ymax[5])*100*1.5, np.abs(self.KK_ymax[5])*100*1.5)
+                        if legend == 'on': 
+                            ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymax[5])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax6.annotate('Lin-KK, ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), self.KK_ymax[5]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[6]) > self.KK_ymax[6]:
+                        ax7.set_ylim(self.KK_ymin[6]*100*1.5, np.abs(self.KK_ymin[6])*100*1.5)
+                        if legend == 'on': 
+                            ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax7.annotate('Lin-KK ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[6]) < self.KK_ymax[6]:
+                        ax7.set_ylim(np.negative(self.KK_ymax[6])*100*1.5, np.abs(self.KK_ymax[6])*100*1.5)
+                        if legend == 'on': 
+                            ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymax[6])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax7.annotate('Lin-KK, ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), self.KK_ymax[6]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[7]) > self.KK_ymax[7]:
+                        ax8.set_ylim(self.KK_ymin[7]*100*1.5, np.abs(self.KK_ymin[7])*100*1.5)
+                        if legend == 'on': 
+                            ax8.annotate('Lin-KK, #8', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymin[7])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax8.annotate('Lin-KK ('+str(np.round(np.average(self.df[7].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymin[7])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[7]) < self.KK_ymax[7]:
+                        ax8.set_ylim(np.negative(self.KK_ymax[7])*100*1.5, np.abs(self.KK_ymax[7])*100*1.5)
+                        if legend == 'on': 
+                            ax8.annotate('Lin-KK, #8', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymax[7])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax8.annotate('Lin-KK, ('+str(np.round(np.average(self.df[7].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[7].f)), self.KK_ymax[7]*100*1.2], color='k', fontweight='bold')
+                    #Save Figure
+                    if savefig != 'none':
+                        fig.savefig(savefig)
+    
+                ### 9 Cycles
+                elif len(self.df) == 9:
+                    fig = figure(figsize=(12, 5), dpi=120, facecolor='w', edgecolor='k')
+                    fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
+                    ax1 = fig.add_subplot(331)
+                    ax2 = fig.add_subplot(332)
+                    ax3 = fig.add_subplot(333)
+                    ax4 = fig.add_subplot(334)
+                    ax5 = fig.add_subplot(335)
+                    ax6 = fig.add_subplot(336)
+                    ax7 = fig.add_subplot(337)
+                    ax8 = fig.add_subplot(338)
+                    ax9 = fig.add_subplot(339)
+                    
+                    #cycle 1
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
+                    if legend == 'on': 
+                        ax1.legend(loc='best', fontsize=10, frameon=False)        
+                    ax1.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 2
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on': 
+                        ax2.legend(loc='best', fontsize=10, frameon=False)        
+                    ax2.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 3
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on': 
+                        ax3.legend(loc='best', fontsize=10, frameon=False)        
+                    ax3.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 4
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax4.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
+                    if legend == 'on': 
+                        ax4.legend(loc='best', fontsize=10, frameon=False)        
+                    ax4.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 5
+                    ax5.plot(np.log10(self.df[4].f), self.KK_rr_re[4]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax5.plot(np.log10(self.df[4].f), self.KK_rr_im[4]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on': 
+                        ax5.legend(loc='best', fontsize=10, frameon=False)        
+                    ax5.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 6
+                    ax6.plot(np.log10(self.df[5].f), self.KK_rr_re[5]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax6.plot(np.log10(self.df[5].f), self.KK_rr_im[5]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    if legend == 'on': 
+                        ax6.legend(loc='best', fontsize=10, frameon=False)        
+                    ax6.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 7
+                    ax7.plot(np.log10(self.df[6].f), self.KK_rr_re[6]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax7.plot(np.log10(self.df[6].f), self.KK_rr_im[6]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax7.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
+                    ax7.set_xlabel("log(f) [Hz]")
+                    if legend == 'on':
+                        ax7.legend(loc='best', fontsize=10, frameon=False)
+                    ax7.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 8
+                    ax8.plot(np.log10(self.df[7].f), self.KK_rr_re[7]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax8.plot(np.log10(self.df[7].f), self.KK_rr_im[7]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax8.set_xlabel("log(f) [Hz]")
+                    if legend == 'on':
+                        ax8.legend(loc='best', fontsize=10, frameon=False)
+                    ax8.axhline(0, ls='--', c='k', alpha=.5)
+    
+                    # Cycle 9
+                    ax9.plot(np.log10(self.df[8].f), self.KK_rr_re[8]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
+                    ax9.plot(np.log10(self.df[8].f), self.KK_rr_im[8]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
+                    ax9.set_xlabel("log(f) [Hz]")
+                    if legend == 'on':
+                        ax9.legend(loc='best', fontsize=10, frameon=False)
+                    ax9.axhline(0, ls='--', c='k', alpha=.5)
+                    
+                    ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
+                    self.KK_rr_im_min = []
+                    self.KK_rr_im_max = []
+                    self.KK_rr_re_min = []
+                    self.KK_rr_re_max = []
+                    self.KK_ymin = []
+                    self.KK_ymax = []
+                    for i in range(len(self.df)):
+                        self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
+                        self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
+                        self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
+                        self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
+                        if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
+                            self.KK_ymax.append(self.KK_rr_re_max[i])
+                        else:
+                            self.KK_ymax.append(self.KK_rr_im_max[i])
+                        if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
+                            self.KK_ymin.append(self.KK_rr_re_min[i])
+                        else:
+                            self.KK_ymin.append(self.KK_rr_im_min[i])
+                    if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
+                        ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
+                        if legend == 'on': 
+                            ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
+                        ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
+                        if legend == 'on': 
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
+                        ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
+                        if legend == 'on':
+                            ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
+                        ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
+                        ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
+                        if legend == 'on': 
+                            ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
+                        ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
+                        ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
+                        if legend == 'on': 
+                            ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[4]) > self.KK_ymax[4]:
+                        ax5.set_ylim(self.KK_ymin[4]*100*1.5, np.abs(self.KK_ymin[4])*100*1.5)
+                        if legend == 'on': 
+                            ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax5.annotate('Lin-KK ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[4]) < self.KK_ymax[4]:
+                        ax5.set_ylim(np.negative(self.KK_ymax[4])*100*1.5, np.abs(self.KK_ymax[4])*100*1.5)
+                        if legend == 'on': 
+                            ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymax[4])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax5.annotate('Lin-KK, ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), self.KK_ymax[4]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[5]) > self.KK_ymax[5]:
+                        ax6.set_ylim(self.KK_ymin[5]*100*1.5, np.abs(self.KK_ymin[5])*100*1.5)
+                        if legend == 'on': 
+                            ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax6.annotate('Lin-KK ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[5]) < self.KK_ymax[5]:
+                        ax6.set_ylim(np.negative(self.KK_ymax[5])*100*1.5, np.abs(self.KK_ymax[5])*100*1.5)
+                        if legend == 'on': 
+                            ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymax[5])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax6.annotate('Lin-KK, ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), self.KK_ymax[5]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[6]) > self.KK_ymax[6]:
+                        ax7.set_ylim(self.KK_ymin[6]*100*1.5, np.abs(self.KK_ymin[6])*100*1.5)
+                        if legend == 'on': 
+                            ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax7.annotate('Lin-KK ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[6]) < self.KK_ymax[6]:
+                        ax7.set_ylim(np.negative(self.KK_ymax[6])*100*1.5, np.abs(self.KK_ymax[6])*100*1.5)
+                        if legend == 'on': 
+                            ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymax[6])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax7.annotate('Lin-KK, ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), self.KK_ymax[6]*100*1.2], color='k', fontweight='bold')
+                    if np.abs(self.KK_ymin[7]) > self.KK_ymax[7]:
+                        ax8.set_ylim(self.KK_ymin[7]*100*1.5, np.abs(self.KK_ymin[7])*100*1.5)
+                        if legend == 'on': 
+                            ax8.annotate('Lin-KK, #8', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymin[7])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax8.annotate('Lin-KK ('+str(np.round(np.average(self.df[7].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymin[7])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[7]) < self.KK_ymax[7]:
+                        ax8.set_ylim(np.negative(self.KK_ymax[7])*100*1.5, np.abs(self.KK_ymax[7])*100*1.5)
+                        if legend == 'on': 
+                            ax8.annotate('Lin-KK, #8', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymax[7])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax8.annotate('Lin-KK, ('+str(np.round(np.average(self.df[7].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[7].f)), self.KK_ymax[7]*100*1.2], color='k', fontweight='bold')
+    
+                    if np.abs(self.KK_ymin[8]) > self.KK_ymax[8]:
+                        ax9.set_ylim(self.KK_ymin[8]*100*1.5, np.abs(self.KK_ymin[8])*100*1.5)
+                        if legend == 'on': 
+                            ax9.annotate('Lin-KK, #9', xy=[np.min(np.log10(self.df[8].f)), np.abs(self.KK_ymin[8])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax9.annotate('Lin-KK ('+str(np.round(np.average(self.df[8].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[8].f)), np.abs(self.KK_ymin[8])*100*1.2], color='k', fontweight='bold')
+                    elif np.abs(self.KK_ymin[8]) < self.KK_ymax[8]:
+                        ax9.set_ylim(np.negative(self.KK_ymax[8])*100*1.5, np.abs(self.KK_ymax[8])*100*1.5)
+                        if legend == 'on': 
+                            ax9.annotate('Lin-KK, #9', xy=[np.min(np.log10(self.df[8].f)), np.abs(self.KK_ymax[8])*100*1.2], color='k', fontweight='bold')
+                        elif legend == 'potential':
+                            ax9.annotate('Lin-KK, ('+str(np.round(np.average(self.df[8].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[8].f)), self.KK_ymax[8]*100*1.2], color='k', fontweight='bold')  
+                            
+                    #Save Figure
+                    if savefig != 'none':
+                        fig.savefig(savefig)
                 else:
-                    self.KK_ymax = self.KK_rr_im_max
-                if self.KK_rr_re_min < self.KK_rr_im_min:
-                    self.KK_ymin = self.KK_rr_re_min
-                else:
-                    self.KK_ymin = self.KK_rr_im_min
-                if np.abs(self.KK_ymin) > self.KK_ymax:
-                    ax.set_ylim(self.KK_ymin*100*1.5, np.abs(self.KK_ymin)*100*1.5)
-                    if legend == 'on':
-                        ax.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin)*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin)*100*1.3], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin) < self.KK_ymax:
-                    ax.set_ylim(np.negative(self.KK_ymax)*100*1.5, np.abs(self.KK_ymax)*100*1.5)
-                    if legend == 'on':
-                        ax.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax*100*1.3], color='k', fontweight='bold')
-
-                #Save Figure
-                if savefig != 'none':
-                    fig.savefig(savefig)
-
-            ### 2 Cycles
-            elif len(self.df) == 2:
-                fig = figure(figsize=(12, 5), dpi=120, facecolor='w', edgecolor='k')
-                fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
-                ax1 = fig.add_subplot(231)
-                ax2 = fig.add_subplot(232)
-                
-                #cycle 1
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax1.set_xlabel("log(f) [Hz]")
-                ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
-                if legend == 'on' or legend == 'potential':
-                    ax1.legend(loc='best', fontsize=10, frameon=False)        
-                ax1.axhline(0, ls='--', c='k', alpha=.5)
-
-                #cycle 2
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax2.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax2.legend(loc='best', fontsize=10, frameon=False)        
-                ax2.axhline(0, ls='--', c='k', alpha=.5)
-
-                ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
-                self.KK_rr_im_min = []
-                self.KK_rr_im_max = []
-                self.KK_rr_re_min = []
-                self.KK_rr_re_max = []
-                self.KK_ymin = []
-                self.KK_ymax = []
-                for i in range(len(self.df)):
-                    self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
-                    self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
-                    self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
-                    self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
-                    if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
-                        self.KK_ymax.append(self.KK_rr_re_max[i])
-                    else:
-                        self.KK_ymax.append(self.KK_rr_im_max[i])
-                    if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
-                        self.KK_ymin.append(self.KK_rr_re_min[i])
-                    else:
-                        self.KK_ymin.append(self.KK_rr_im_min[i])
-
-                if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
-                    ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.3], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.3], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
-                    ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
-                    if legend == 'on': 
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
-                    if legend == 'on':
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.3], color='k', fontweight='bold')
-                #Save Figure
-                if savefig != 'none':
-                    fig.savefig(savefig)
-
-            ### 3 Cycles
-            elif len(self.df) == 3:
-                fig = figure(figsize=(12, 5), dpi=120, facecolor='w', edgecolor='k')
-                fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
-                ax1 = fig.add_subplot(231)
-                ax2 = fig.add_subplot(232)
-                ax3 = fig.add_subplot(233)
-                
-                #cycle 1
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax1.set_xlabel("log(f) [Hz]")
-                ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
-                if legend == 'on' or legend == 'potential':
-                    ax1.legend(loc='best', fontsize=10, frameon=False)        
-                ax1.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 2
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax2.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax2.legend(loc='best', fontsize=10, frameon=False)        
-                ax2.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 3
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax3.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax3.legend(loc='best', fontsize=10, frameon=False)        
-                ax3.axhline(0, ls='--', c='k', alpha=.5)
-                
-                ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
-                self.KK_rr_im_min = []
-                self.KK_rr_im_max = []
-                self.KK_rr_re_min = []
-                self.KK_rr_re_max = []
-                self.KK_ymin = []
-                self.KK_ymax = []
-                for i in range(len(self.df)):
-                    self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
-                    self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
-                    self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
-                    self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
-                    if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
-                        self.KK_ymax.append(self.KK_rr_re_max[i])
-                    else:
-                        self.KK_ymax.append(self.KK_rr_im_max[i])
-                    if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
-                        self.KK_ymin.append(self.KK_rr_re_min[i])
-                    else:
-                        self.KK_ymin.append(self.KK_rr_im_min[i])
-                if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
-                    ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.3], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.3], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
-                    ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
-                    if legend == 'on': 
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
-                    if legend == 'on':
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.3], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
-                    ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.3], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
-                    ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.3], color='k', fontweight='bold')
-                #Save Figure
-                if savefig != 'none':
-                    fig.savefig(savefig)
-
-            ### 4 Cycles
-            elif len(self.df) == 4:
-                fig = figure(figsize=(12, 3.8), dpi=120, facecolor='w', edgecolor='k')
-                fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
-                ax1 = fig.add_subplot(221)
-                ax2 = fig.add_subplot(222)
-                ax3 = fig.add_subplot(223)
-                ax4 = fig.add_subplot(224)
-                
-                #cycle 1
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
-                if legend == 'on' or legend == 'potential':
-                    ax1.legend(loc='best', fontsize=10, frameon=False)        
-                ax1.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 2
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax2.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax2.legend(loc='best', fontsize=10, frameon=False)        
-                ax2.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 3
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax3.set_xlabel("log(f) [Hz]")
-                ax3.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
-                if legend == 'on' or legend == 'potential':
-                    ax3.legend(loc='best', fontsize=10, frameon=False)        
-                ax3.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 4
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax4.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax4.legend(loc='best', fontsize=10, frameon=False)        
-                ax4.axhline(0, ls='--', c='k', alpha=.5)
-                
-                ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
-                self.KK_rr_im_min = []
-                self.KK_rr_im_max = []
-                self.KK_rr_re_min = []
-                self.KK_rr_re_max = []
-                self.KK_ymin = []
-                self.KK_ymax = []
-                for i in range(len(self.df)):
-                    self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
-                    self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
-                    self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
-                    self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
-                    if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
-                        self.KK_ymax.append(self.KK_rr_re_max[i])
-                    else:
-                        self.KK_ymax.append(self.KK_rr_im_max[i])
-                    if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
-                        self.KK_ymin.append(self.KK_rr_re_min[i])
-                    else:
-                        self.KK_ymin.append(self.KK_rr_im_min[i])
-                if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
-                    ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
-                    ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
-                    if legend == 'on': 
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
-                    if legend == 'on':
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
-                    ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
-                    ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
-                    ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
-                    ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
-
-                #Save Figure
-                if savefig != 'none':
-                    fig.savefig(savefig)
-
-            ### 5 Cycles
-            elif len(self.df) == 5:
-                fig = figure(figsize=(12, 3.8), dpi=120, facecolor='w', edgecolor='k')
-                fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
-                ax1 = fig.add_subplot(231)
-                ax2 = fig.add_subplot(232)
-                ax3 = fig.add_subplot(233)
-                ax4 = fig.add_subplot(234)
-                ax5 = fig.add_subplot(235)
-                
-                #cycle 1
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
-                if legend == 'on' or legend == 'potential':
-                    ax1.legend(loc='best', fontsize=10, frameon=False)        
-                ax1.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 2
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on' or legend == 'potential':
-                    ax2.legend(loc='best', fontsize=10, frameon=False)        
-                ax2.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 3
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax3.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax3.legend(loc='best', fontsize=10, frameon=False)        
-                ax3.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 4
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax4.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=18)
-                ax4.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax4.legend(loc='best', fontsize=10, frameon=False)        
-                ax4.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 5
-                ax5.plot(np.log10(self.df[4].f), self.KK_rr_re[4]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax5.plot(np.log10(self.df[4].f), self.KK_rr_im[4]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax5.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax5.legend(loc='best', fontsize=10, frameon=False)        
-                ax5.axhline(0, ls='--', c='k', alpha=.5)
-
-                ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
-                self.KK_rr_im_min = []
-                self.KK_rr_im_max = []
-                self.KK_rr_re_min = []
-                self.KK_rr_re_max = []
-                self.KK_ymin = []
-                self.KK_ymax = []
-                for i in range(len(self.df)):
-                    self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
-                    self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
-                    self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
-                    self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
-                    if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
-                        self.KK_ymax.append(self.KK_rr_re_max[i])
-                    else:
-                        self.KK_ymax.append(self.KK_rr_im_max[i])
-                    if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
-                        self.KK_ymin.append(self.KK_rr_re_min[i])
-                    else:
-                        self.KK_ymin.append(self.KK_rr_im_min[i])
-                if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
-                    ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
-                    ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
-                    if legend == 'on': 
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
-                    if legend == 'on':
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
-                    ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
-                    ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
-                    ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
-                    ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[4]) > self.KK_ymax[4]:
-                    ax5.set_ylim(self.KK_ymin[4]*100*1.5, np.abs(self.KK_ymin[4])*100*1.5)
-                    if legend == 'on': 
-                        ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax5.annotate('Lin-KK ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[4]) < self.KK_ymax[4]:
-                    ax5.set_ylim(np.negative(self.KK_ymax[4])*100*1.5, np.abs(self.KK_ymax[4])*100*1.5)
-                    if legend == 'on': 
-                        ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymax[4])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax5.annotate('Lin-KK, ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), self.KK_ymax[4]*100*1.2], color='k', fontweight='bold')
-                #Save Figure
-                if savefig != 'none':
-                    fig.savefig(savefig)
-
-            ### 6 Cycles
-            elif len(self.df) == 6:
-                fig = figure(figsize=(12, 3.8), dpi=120, facecolor='w', edgecolor='k')
-                fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
-                ax1 = fig.add_subplot(231)
-                ax2 = fig.add_subplot(232)
-                ax3 = fig.add_subplot(233)
-                ax4 = fig.add_subplot(234)
-                ax5 = fig.add_subplot(235)
-                ax6 = fig.add_subplot(236)
-                
-                #cycle 1
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
-                if legend == 'on' or legend == 'potential':
-                    ax1.legend(loc='best', fontsize=10, frameon=False)        
-                ax1.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 2
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on' or legend == 'potential':
-                    ax2.legend(loc='best', fontsize=10, frameon=False)        
-                ax2.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 3
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on' or legend == 'potential':
-                    ax3.legend(loc='best', fontsize=10, frameon=False)        
-                ax3.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 4
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax4.set_xlabel("log(f) [Hz]")
-                ax4.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
-                if legend == 'on' or legend == 'potential':
-                    ax4.legend(loc='best', fontsize=10, frameon=False)        
-                ax4.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 5
-                ax5.plot(np.log10(self.df[4].f), self.KK_rr_re[4]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax5.plot(np.log10(self.df[4].f), self.KK_rr_im[4]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax5.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax5.legend(loc='best', fontsize=10, frameon=False)        
-                ax5.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 6
-                ax6.plot(np.log10(self.df[5].f), self.KK_rr_re[5]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax6.plot(np.log10(self.df[5].f), self.KK_rr_im[5]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax6.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax6.legend(loc='best', fontsize=10, frameon=False)        
-                ax6.axhline(0, ls='--', c='k', alpha=.5)
-                
-                ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
-                self.KK_rr_im_min = []
-                self.KK_rr_im_max = []
-                self.KK_rr_re_min = []
-                self.KK_rr_re_max = []
-                self.KK_ymin = []
-                self.KK_ymax = []
-                for i in range(len(self.df)):
-                    self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
-                    self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
-                    self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
-                    self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
-                    if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
-                        self.KK_ymax.append(self.KK_rr_re_max[i])
-                    else:
-                        self.KK_ymax.append(self.KK_rr_im_max[i])
-                    if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
-                        self.KK_ymin.append(self.KK_rr_re_min[i])
-                    else:
-                        self.KK_ymin.append(self.KK_rr_im_min[i])
-                if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
-                    ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
-                    ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
-                    if legend == 'on': 
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
-                    if legend == 'on':
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
-                    ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
-                    ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
-                    ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
-                    ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[4]) > self.KK_ymax[4]:
-                    ax5.set_ylim(self.KK_ymin[4]*100*1.5, np.abs(self.KK_ymin[4])*100*1.5)
-                    if legend == 'on': 
-                        ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax5.annotate('Lin-KK ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[4]) < self.KK_ymax[4]:
-                    ax5.set_ylim(np.negative(self.KK_ymax[4])*100*1.5, np.abs(self.KK_ymax[4])*100*1.5)
-                    if legend == 'on': 
-                        ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymax[4])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax5.annotate('Lin-KK, ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), self.KK_ymax[4]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[5]) > self.KK_ymax[5]:
-                    ax6.set_ylim(self.KK_ymin[5]*100*1.5, np.abs(self.KK_ymin[5])*100*1.5)
-                    if legend == 'on': 
-                        ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax6.annotate('Lin-KK ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[5]) < self.KK_ymax[5]:
-                    ax6.set_ylim(np.negative(self.KK_ymax[5])*100*1.5, np.abs(self.KK_ymax[5])*100*1.5)
-                    if legend == 'on': 
-                        ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymax[5])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax6.annotate('Lin-KK, ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), self.KK_ymax[5]*100*1.2], color='k', fontweight='bold')
-                #Save Figure
-                if savefig != 'none':
-                    fig.savefig(savefig)
-                          
-            ### 7 Cycles
-            elif len(self.df) == 7:
-                fig = figure(figsize=(12, 5), dpi=120, facecolor='w', edgecolor='k')
-                fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
-                ax1 = fig.add_subplot(331)
-                ax2 = fig.add_subplot(332)
-                ax3 = fig.add_subplot(333)
-                ax4 = fig.add_subplot(334)
-                ax5 = fig.add_subplot(335)
-                ax6 = fig.add_subplot(336)
-                ax7 = fig.add_subplot(337)
-                
-                #cycle 1
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
-                if legend == 'on' or legend == 'potential':
-                    ax1.legend(loc='best', fontsize=10, frameon=False)        
-                ax1.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 2
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on' or legend == 'potential':
-                    ax2.legend(loc='best', fontsize=10, frameon=False)        
-                ax2.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 3
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax3.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax3.legend(loc='best', fontsize=10, frameon=False)
-                ax3.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 4
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax4.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
-                if legend == 'on' or legend == 'potential':
-                    ax4.legend(loc='best', fontsize=10, frameon=False)
-                ax4.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 5
-                ax5.plot(np.log10(self.df[4].f), self.KK_rr_re[4]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax5.plot(np.log10(self.df[4].f), self.KK_rr_im[4]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax5.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax5.legend(loc='best', fontsize=10, frameon=False)
-                ax5.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 6
-                ax6.plot(np.log10(self.df[5].f), self.KK_rr_re[5]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax6.plot(np.log10(self.df[5].f), self.KK_rr_im[5]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax6.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax6.legend(loc='best', fontsize=10, frameon=False)
-                ax6.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 7
-                ax7.plot(np.log10(self.df[6].f), self.KK_rr_re[6]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax7.plot(np.log10(self.df[6].f), self.KK_rr_im[6]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax7.set_xlabel("log(f) [Hz]")
-                ax7.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
-                if legend == 'on' or legend == 'potential':
-                    ax7.legend(loc='best', fontsize=10, frameon=False)
-                ax7.axhline(0, ls='--', c='k', alpha=.5)
-                
-                ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
-                self.KK_rr_im_min = []
-                self.KK_rr_im_max = []
-                self.KK_rr_re_min = []
-                self.KK_rr_re_max = []
-                self.KK_ymin = []
-                self.KK_ymax = []
-                for i in range(len(self.df)):
-                    self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
-                    self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
-                    self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
-                    self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
-                    if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
-                        self.KK_ymax.append(self.KK_rr_re_max[i])
-                    else:
-                        self.KK_ymax.append(self.KK_rr_im_max[i])
-                    if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
-                        self.KK_ymin.append(self.KK_rr_re_min[i])
-                    else:
-                        self.KK_ymin.append(self.KK_rr_im_min[i])
-                if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
-                    ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
-                    ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
-                    if legend == 'on': 
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
-                    if legend == 'on':
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
-                    ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
-                    ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
-                    ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
-                    ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[4]) > self.KK_ymax[4]:
-                    ax5.set_ylim(self.KK_ymin[4]*100*1.5, np.abs(self.KK_ymin[4])*100*1.5)
-                    if legend == 'on': 
-                        ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax5.annotate('Lin-KK ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[4]) < self.KK_ymax[4]:
-                    ax5.set_ylim(np.negative(self.KK_ymax[4])*100*1.5, np.abs(self.KK_ymax[4])*100*1.5)
-                    if legend == 'on': 
-                        ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymax[4])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax5.annotate('Lin-KK, ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), self.KK_ymax[4]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[5]) > self.KK_ymax[5]:
-                    ax6.set_ylim(self.KK_ymin[5]*100*1.5, np.abs(self.KK_ymin[5])*100*1.5)
-                    if legend == 'on': 
-                        ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax6.annotate('Lin-KK ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[5]) < self.KK_ymax[5]:
-                    ax6.set_ylim(np.negative(self.KK_ymax[5])*100*1.5, np.abs(self.KK_ymax[5])*100*1.5)
-                    if legend == 'on': 
-                        ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymax[5])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax6.annotate('Lin-KK, ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), self.KK_ymax[5]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[6]) > self.KK_ymax[6]:
-                    ax7.set_ylim(self.KK_ymin[6]*100*1.5, np.abs(self.KK_ymin[6])*100*1.5)
-                    if legend == 'on': 
-                        ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax7.annotate('Lin-KK ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[6]) < self.KK_ymax[6]:
-                    ax7.set_ylim(np.negative(self.KK_ymax[6])*100*1.5, np.abs(self.KK_ymax[6])*100*1.5)
-                    if legend == 'on': 
-                        ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymax[6])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax7.annotate('Lin-KK, ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), self.KK_ymax[6]*100*1.2], color='k', fontweight='bold')
-                #Save Figure
-                if savefig != 'none':
-                    fig.savefig(savefig)      
-                           
-            ### 8 Cycles
-            elif len(self.df) == 8:
-                fig = figure(figsize=(12, 5), dpi=120, facecolor='w', edgecolor='k')
-                fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
-                ax1 = fig.add_subplot(331)
-                ax2 = fig.add_subplot(332)
-                ax3 = fig.add_subplot(333)
-                ax4 = fig.add_subplot(334)
-                ax5 = fig.add_subplot(335)
-                ax6 = fig.add_subplot(336)
-                ax7 = fig.add_subplot(337)
-                ax8 = fig.add_subplot(338)
-                
-                #cycle 1
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=14)
-                if legend == 'on' or legend == 'potential':
-                    ax1.legend(loc='best', fontsize=10, frameon=False)        
-                ax1.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 2
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on' or legend == 'potential':
-                    ax2.legend(loc='best', fontsize=10, frameon=False)        
-                ax2.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 3
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on' or legend == 'potential':
-                    ax3.legend(loc='best', fontsize=10, frameon=False)        
-                ax3.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 4
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax4.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=14)
-                if legend == 'on' or legend == 'potential':
-                    ax4.legend(loc='best', fontsize=10, frameon=False)        
-                ax4.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 5
-                ax5.plot(np.log10(self.df[4].f), self.KK_rr_re[4]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax5.plot(np.log10(self.df[4].f), self.KK_rr_im[4]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on' or legend == 'potential':
-                    ax5.legend(loc='best', fontsize=10, frameon=False)        
-                ax5.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 6
-                ax6.plot(np.log10(self.df[5].f), self.KK_rr_re[5]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax6.plot(np.log10(self.df[5].f), self.KK_rr_im[5]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax6.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax6.legend(loc='best', fontsize=10, frameon=False)        
-                ax6.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 7
-                ax7.plot(np.log10(self.df[6].f), self.KK_rr_re[6]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax7.plot(np.log10(self.df[6].f), self.KK_rr_im[6]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax7.set_xlabel("log(f) [Hz]")
-                ax7.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=14)                
-                if legend == 'on' or legend == 'potential':
-                    ax7.legend(loc='best', fontsize=10, frameon=False)        
-                ax7.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 8
-                ax8.plot(np.log10(self.df[7].f), self.KK_rr_re[7]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax8.plot(np.log10(self.df[7].f), self.KK_rr_im[7]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax8.set_xlabel("log(f) [Hz]")
-                if legend == 'on' or legend == 'potential':
-                    ax8.legend(loc='best', fontsize=10, frameon=False)        
-                ax8.axhline(0, ls='--', c='k', alpha=.5)
-
-                ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
-                self.KK_rr_im_min = []
-                self.KK_rr_im_max = []
-                self.KK_rr_re_min = []
-                self.KK_rr_re_max = []
-                self.KK_ymin = []
-                self.KK_ymax = []
-                for i in range(len(self.df)):
-                    self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
-                    self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
-                    self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
-                    self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
-                    if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
-                        self.KK_ymax.append(self.KK_rr_re_max[i])
-                    else:
-                        self.KK_ymax.append(self.KK_rr_im_max[i])
-                    if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
-                        self.KK_ymin.append(self.KK_rr_re_min[i])
-                    else:
-                        self.KK_ymin.append(self.KK_rr_im_min[i])
-                if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
-                    ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
-                    ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
-                    if legend == 'on': 
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
-                    if legend == 'on':
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
-                    ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
-                    ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
-                    ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
-                    ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[4]) > self.KK_ymax[4]:
-                    ax5.set_ylim(self.KK_ymin[4]*100*1.5, np.abs(self.KK_ymin[4])*100*1.5)
-                    if legend == 'on': 
-                        ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax5.annotate('Lin-KK ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[4]) < self.KK_ymax[4]:
-                    ax5.set_ylim(np.negative(self.KK_ymax[4])*100*1.5, np.abs(self.KK_ymax[4])*100*1.5)
-                    if legend == 'on': 
-                        ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymax[4])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax5.annotate('Lin-KK, ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), self.KK_ymax[4]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[5]) > self.KK_ymax[5]:
-                    ax6.set_ylim(self.KK_ymin[5]*100*1.5, np.abs(self.KK_ymin[5])*100*1.5)
-                    if legend == 'on': 
-                        ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax6.annotate('Lin-KK ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[5]) < self.KK_ymax[5]:
-                    ax6.set_ylim(np.negative(self.KK_ymax[5])*100*1.5, np.abs(self.KK_ymax[5])*100*1.5)
-                    if legend == 'on': 
-                        ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymax[5])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax6.annotate('Lin-KK, ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), self.KK_ymax[5]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[6]) > self.KK_ymax[6]:
-                    ax7.set_ylim(self.KK_ymin[6]*100*1.5, np.abs(self.KK_ymin[6])*100*1.5)
-                    if legend == 'on': 
-                        ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax7.annotate('Lin-KK ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[6]) < self.KK_ymax[6]:
-                    ax7.set_ylim(np.negative(self.KK_ymax[6])*100*1.5, np.abs(self.KK_ymax[6])*100*1.5)
-                    if legend == 'on': 
-                        ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymax[6])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax7.annotate('Lin-KK, ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), self.KK_ymax[6]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[7]) > self.KK_ymax[7]:
-                    ax8.set_ylim(self.KK_ymin[7]*100*1.5, np.abs(self.KK_ymin[7])*100*1.5)
-                    if legend == 'on': 
-                        ax8.annotate('Lin-KK, #8', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymin[7])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax8.annotate('Lin-KK ('+str(np.round(np.average(self.df[7].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymin[7])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[7]) < self.KK_ymax[7]:
-                    ax8.set_ylim(np.negative(self.KK_ymax[7])*100*1.5, np.abs(self.KK_ymax[7])*100*1.5)
-                    if legend == 'on': 
-                        ax8.annotate('Lin-KK, #8', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymax[7])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax8.annotate('Lin-KK, ('+str(np.round(np.average(self.df[7].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[7].f)), self.KK_ymax[7]*100*1.2], color='k', fontweight='bold')
-                #Save Figure
-                if savefig != 'none':
-                    fig.savefig(savefig)
-
-            ### 9 Cycles
-            elif len(self.df) == 9:
-                fig = figure(figsize=(12, 5), dpi=120, facecolor='w', edgecolor='k')
-                fig.subplots_adjust(left=0.1, right=0.95, hspace=0.25, wspace=0.25, bottom=0.1, top=0.95)
-                ax1 = fig.add_subplot(331)
-                ax2 = fig.add_subplot(332)
-                ax3 = fig.add_subplot(333)
-                ax4 = fig.add_subplot(334)
-                ax5 = fig.add_subplot(335)
-                ax6 = fig.add_subplot(336)
-                ax7 = fig.add_subplot(337)
-                ax8 = fig.add_subplot(338)
-                ax9 = fig.add_subplot(339)
-                
-                #cycle 1
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_re[0]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax1.plot(np.log10(self.df[0].f), self.KK_rr_im[0]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax1.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
-                if legend == 'on': 
-                    ax1.legend(loc='best', fontsize=10, frameon=False)        
-                ax1.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 2
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_re[1]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax2.plot(np.log10(self.df[1].f), self.KK_rr_im[1]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on': 
-                    ax2.legend(loc='best', fontsize=10, frameon=False)        
-                ax2.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 3
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_re[2]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax3.plot(np.log10(self.df[2].f), self.KK_rr_im[2]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on': 
-                    ax3.legend(loc='best', fontsize=10, frameon=False)        
-                ax3.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 4
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_re[3]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax4.plot(np.log10(self.df[3].f), self.KK_rr_im[3]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax4.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
-                if legend == 'on': 
-                    ax4.legend(loc='best', fontsize=10, frameon=False)        
-                ax4.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 5
-                ax5.plot(np.log10(self.df[4].f), self.KK_rr_re[4]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax5.plot(np.log10(self.df[4].f), self.KK_rr_im[4]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on': 
-                    ax5.legend(loc='best', fontsize=10, frameon=False)        
-                ax5.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 6
-                ax6.plot(np.log10(self.df[5].f), self.KK_rr_re[5]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax6.plot(np.log10(self.df[5].f), self.KK_rr_im[5]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                if legend == 'on': 
-                    ax6.legend(loc='best', fontsize=10, frameon=False)        
-                ax6.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 7
-                ax7.plot(np.log10(self.df[6].f), self.KK_rr_re[6]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax7.plot(np.log10(self.df[6].f), self.KK_rr_im[6]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax7.set_ylabel("$\Delta$Z', $\Delta$-Z'' [%]", fontsize=15)
-                ax7.set_xlabel("log(f) [Hz]")
-                if legend == 'on':
-                    ax7.legend(loc='best', fontsize=10, frameon=False)
-                ax7.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 8
-                ax8.plot(np.log10(self.df[7].f), self.KK_rr_re[7]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax8.plot(np.log10(self.df[7].f), self.KK_rr_im[7]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax8.set_xlabel("log(f) [Hz]")
-                if legend == 'on':
-                    ax8.legend(loc='best', fontsize=10, frameon=False)
-                ax8.axhline(0, ls='--', c='k', alpha=.5)
-
-                # Cycle 9
-                ax9.plot(np.log10(self.df[8].f), self.KK_rr_re[8]*100, color=colors_real[3], marker='D', ls='--', ms=6, alpha=.7, label="$\Delta$Z'")
-                ax9.plot(np.log10(self.df[8].f), self.KK_rr_im[8]*100, color=colors_imag[3], marker='s', ls='--', ms=6, alpha=.7, label="$\Delta$-Z''")
-                ax9.set_xlabel("log(f) [Hz]")
-                if legend == 'on':
-                    ax9.legend(loc='best', fontsize=10, frameon=False)
-                ax9.axhline(0, ls='--', c='k', alpha=.5)
-                
-                ### Setting ylims and labeling plot with 'KK-Test' in RR subplot
-                self.KK_rr_im_min = []
-                self.KK_rr_im_max = []
-                self.KK_rr_re_min = []
-                self.KK_rr_re_max = []
-                self.KK_ymin = []
-                self.KK_ymax = []
-                for i in range(len(self.df)):
-                    self.KK_rr_im_min.append(np.min(self.KK_rr_im[i]))
-                    self.KK_rr_im_max.append(np.max(self.KK_rr_im[i]))
-                    self.KK_rr_re_min.append(np.min(self.KK_rr_re[i]))
-                    self.KK_rr_re_max.append(np.max(self.KK_rr_re[i]))
-                    if self.KK_rr_re_max[i] > self.KK_rr_im_max[i]:
-                        self.KK_ymax.append(self.KK_rr_re_max[i])
-                    else:
-                        self.KK_ymax.append(self.KK_rr_im_max[i])
-                    if self.KK_rr_re_min[i] < self.KK_rr_im_min[i]:
-                        self.KK_ymin.append(self.KK_rr_re_min[i])
-                    else:
-                        self.KK_ymin.append(self.KK_rr_im_min[i])
-                if np.abs(self.KK_ymin[0]) > self.KK_ymax[0]:
-                    ax1.set_ylim(self.KK_ymin[0]*100*1.5, np.abs(self.KK_ymin[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymin[0])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax1.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[0])*100*1.5)
-                    if legend == 'on': 
-                        ax1.annotate('Lin-KK, #1', xy=[np.min(np.log10(self.df[0].f)), np.abs(self.KK_ymax[0])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax1.annotate('Lin-KK, ('+str(np.round(np.average(self.df[0].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[0].f)), self.KK_ymax[0]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[1]) > self.KK_ymax[1]:
-                    ax2.set_ylim(self.KK_ymin[1]*100*1.5, np.abs(self.KK_ymin[1])*100*1.5)
-                    if legend == 'on': 
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.3], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), np.max(np.abs(self.KK_ymin[1]))*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[0]) < self.KK_ymax[0]:
-                    ax2.set_ylim(np.negative(self.KK_ymax[1])*100*1.5, np.abs(self.KK_ymax[1])*100*1.5)
-                    if legend == 'on':
-                        ax2.annotate('Lin-KK, #2', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax2.annotate('Lin-KK ('+str(np.round(np.average(self.df[1].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[1].f)), self.KK_ymax[1]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[2]) > self.KK_ymax[2]:
-                    ax3.set_ylim(self.KK_ymin[2]*100*1.5, np.abs(self.KK_ymin[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymin[2])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[2]) < self.KK_ymax[2]:
-                    ax3.set_ylim(np.negative(self.KK_ymax[0])*100*1.5, np.abs(self.KK_ymax[2])*100*1.5)
-                    if legend == 'on': 
-                        ax3.annotate('Lin-KK, #3', xy=[np.min(np.log10(self.df[2].f)), np.abs(self.KK_ymax[2])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax3.annotate('Lin-KK, ('+str(np.round(np.average(self.df[2].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[2].f)), self.KK_ymax[2]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[3]) > self.KK_ymax[3]:
-                    ax4.set_ylim(self.KK_ymin[3]*100*1.5, np.abs(self.KK_ymin[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymin[3])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[3]) < self.KK_ymax[3]:
-                    ax4.set_ylim(np.negative(self.KK_ymax[3])*100*1.5, np.abs(self.KK_ymax[3])*100*1.5)
-                    if legend == 'on': 
-                        ax4.annotate('Lin-KK, #4', xy=[np.min(np.log10(self.df[3].f)), np.abs(self.KK_ymax[3])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax4.annotate('Lin-KK, ('+str(np.round(np.average(self.df[3].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[3].f)), self.KK_ymax[3]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[4]) > self.KK_ymax[4]:
-                    ax5.set_ylim(self.KK_ymin[4]*100*1.5, np.abs(self.KK_ymin[4])*100*1.5)
-                    if legend == 'on': 
-                        ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax5.annotate('Lin-KK ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymin[4])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[4]) < self.KK_ymax[4]:
-                    ax5.set_ylim(np.negative(self.KK_ymax[4])*100*1.5, np.abs(self.KK_ymax[4])*100*1.5)
-                    if legend == 'on': 
-                        ax5.annotate('Lin-KK, #5', xy=[np.min(np.log10(self.df[4].f)), np.abs(self.KK_ymax[4])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax5.annotate('Lin-KK, ('+str(np.round(np.average(self.df[4].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[4].f)), self.KK_ymax[4]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[5]) > self.KK_ymax[5]:
-                    ax6.set_ylim(self.KK_ymin[5]*100*1.5, np.abs(self.KK_ymin[5])*100*1.5)
-                    if legend == 'on': 
-                        ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax6.annotate('Lin-KK ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymin[5])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[5]) < self.KK_ymax[5]:
-                    ax6.set_ylim(np.negative(self.KK_ymax[5])*100*1.5, np.abs(self.KK_ymax[5])*100*1.5)
-                    if legend == 'on': 
-                        ax6.annotate('Lin-KK, #6', xy=[np.min(np.log10(self.df[5].f)), np.abs(self.KK_ymax[5])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax6.annotate('Lin-KK, ('+str(np.round(np.average(self.df[5].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[5].f)), self.KK_ymax[5]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[6]) > self.KK_ymax[6]:
-                    ax7.set_ylim(self.KK_ymin[6]*100*1.5, np.abs(self.KK_ymin[6])*100*1.5)
-                    if legend == 'on': 
-                        ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax7.annotate('Lin-KK ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymin[6])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[6]) < self.KK_ymax[6]:
-                    ax7.set_ylim(np.negative(self.KK_ymax[6])*100*1.5, np.abs(self.KK_ymax[6])*100*1.5)
-                    if legend == 'on': 
-                        ax7.annotate('Lin-KK, #7', xy=[np.min(np.log10(self.df[6].f)), np.abs(self.KK_ymax[6])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax7.annotate('Lin-KK, ('+str(np.round(np.average(self.df[6].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[6].f)), self.KK_ymax[6]*100*1.2], color='k', fontweight='bold')
-                if np.abs(self.KK_ymin[7]) > self.KK_ymax[7]:
-                    ax8.set_ylim(self.KK_ymin[7]*100*1.5, np.abs(self.KK_ymin[7])*100*1.5)
-                    if legend == 'on': 
-                        ax8.annotate('Lin-KK, #8', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymin[7])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax8.annotate('Lin-KK ('+str(np.round(np.average(self.df[7].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymin[7])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[7]) < self.KK_ymax[7]:
-                    ax8.set_ylim(np.negative(self.KK_ymax[7])*100*1.5, np.abs(self.KK_ymax[7])*100*1.5)
-                    if legend == 'on': 
-                        ax8.annotate('Lin-KK, #8', xy=[np.min(np.log10(self.df[7].f)), np.abs(self.KK_ymax[7])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax8.annotate('Lin-KK, ('+str(np.round(np.average(self.df[7].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[7].f)), self.KK_ymax[7]*100*1.2], color='k', fontweight='bold')
-
-                if np.abs(self.KK_ymin[8]) > self.KK_ymax[8]:
-                    ax9.set_ylim(self.KK_ymin[8]*100*1.5, np.abs(self.KK_ymin[8])*100*1.5)
-                    if legend == 'on': 
-                        ax9.annotate('Lin-KK, #9', xy=[np.min(np.log10(self.df[8].f)), np.abs(self.KK_ymin[8])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax9.annotate('Lin-KK ('+str(np.round(np.average(self.df[8].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[8].f)), np.abs(self.KK_ymin[8])*100*1.2], color='k', fontweight='bold')
-                elif np.abs(self.KK_ymin[8]) < self.KK_ymax[8]:
-                    ax9.set_ylim(np.negative(self.KK_ymax[8])*100*1.5, np.abs(self.KK_ymax[8])*100*1.5)
-                    if legend == 'on': 
-                        ax9.annotate('Lin-KK, #9', xy=[np.min(np.log10(self.df[8].f)), np.abs(self.KK_ymax[8])*100*1.2], color='k', fontweight='bold')
-                    elif legend == 'potential':
-                        ax9.annotate('Lin-KK, ('+str(np.round(np.average(self.df[8].E_avg),2))+' V)', xy=[np.min(np.log10(self.df[8].f)), self.KK_ymax[8]*100*1.2], color='k', fontweight='bold')  
-                        
-                #Save Figure
-                if savefig != 'none':
-                    fig.savefig(savefig)
-            else:
-                print('Too many spectras, cannot plot all. Maximum spectras allowed = 9')
+                    print('Too many spectras, cannot plot all. Maximum spectras allowed = 9')
+                   
 
     def EIS_fit(self, params, circuit, weight_func='modulus', nan_policy='raise'):
         '''
